@@ -3,44 +3,64 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class EarthquakeMagnitudeLSTM(nn.Module):
-    def __init__(self, input_size, hidden_size=64, num_layers=3):
+    def __init__(self, input_size, hidden_size=128):
         super(EarthquakeMagnitudeLSTM, self).__init__()
         
-        self.lstm = nn.LSTM(input_size, hidden_size, 
-                            num_layers=num_layers, 
-                            batch_first=True, 
-                            bidirectional=True, 
-                            dropout=0.3)
+        self.first_lstm_layers = nn.ModuleList([
+            nn.LSTM(
+                input_size if i == 0 else hidden_size * 2, 
+                hidden_size, 
+                batch_first=True, 
+                bidirectional=True
+            ) for i in range(3)
+        ])
         
-        self.multihead_attn = nn.MultiheadAttention(
-            embed_dim=hidden_size*2, 
+        self.first_attention = nn.MultiheadAttention(
+            embed_dim=hidden_size * 2, 
             num_heads=4, 
-            dropout=0.2
+            dropout=0.2,
+            batch_first=True
         )
         
-        self.feature_extractor = nn.Sequential(
-            nn.Linear(hidden_size*2, hidden_size),
-            nn.ReLU(),
-            nn.Dropout(0.2)
+        self.second_lstm_layers = nn.ModuleList([
+            nn.LSTM(
+                hidden_size * 2, 
+                hidden_size, 
+                batch_first=True, 
+                bidirectional=True
+            ) for _ in range(3)
+        ])
+        
+        self.second_attention = nn.MultiheadAttention(
+            embed_dim=hidden_size * 2, 
+            num_heads=4, 
+            dropout=0.2,
+            batch_first=True
         )
         
         self.magnitude_predictor = nn.Sequential(
-            nn.Linear(hidden_size, 32),
+            nn.Linear(hidden_size * 2, 256),
             nn.ReLU(),
-            nn.Linear(32, 1)
+            nn.Dropout(0.3),
+            nn.Linear(256, 64),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(64, 1)
         )
-
+        
     def forward(self, x):
-        lstm_out, _ = self.lstm(x)
+        for lstm_layer in self.first_lstm_layers:
+            x, _ = lstm_layer(x)
         
-        attn_output, _ = self.multihead_attn(
-            lstm_out, lstm_out, lstm_out
-        )
+        x, _ = self.first_attention(x, x, x)
         
-        features = torch.mean(attn_output, dim=1)
+        for lstm_layer in self.second_lstm_layers:
+            x, _ = lstm_layer(x)
         
-        extracted_features = self.feature_extractor(features)
+        x, _ = self.second_attention(x, x, x)
         
-        magnitude = self.magnitude_predictor(extracted_features)
+        pooled_features = torch.mean(x, dim=1)
+        
+        magnitude = self.magnitude_predictor(pooled_features)
         
         return magnitude

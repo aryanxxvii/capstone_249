@@ -15,16 +15,17 @@ lr = float(params['lr'])
 lr_str = str(lr).replace('.', 'P')
 batch_size = int(params['batch_size'])
 window_size = int(params['window_size'])
+hidden_size = int(params['hidden_size'])
 model_path = Path(__file__).parent.parent / 'model' / 'modelfile' / f'model_{n_epochs}_{lr_str}_{batch_size}_{window_size}.pt'
 
 
 def train(X_seq, Y_seq):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    
-    model = EarthquakeMagnitudeLSTM(X_seq.shape[2])
+    # X_seq.shape: [21904, 50, 22]
+    model = EarthquakeMagnitudeLSTM(X_seq.shape[-1], hidden_size=hidden_size)
     model.to(device)
-    criterion = nn.MSELoss()
-    # criterion = magnitude_aware_loss
+    # criterion = nn.MSELoss()
+    criterion = magnitude_aware_loss
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5)
