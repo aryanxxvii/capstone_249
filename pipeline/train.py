@@ -4,38 +4,27 @@ from torch.utils.data import DataLoader
 from model.model import EarthquakeMagnitudeLSTM
 from utils.common import read_yaml
 from pathlib import Path
-from pipeline.etl import etl
 import numpy as np
+from utils.magloss import magnitude_aware_loss
 
 params = Path(__file__).parent.parent / 'params.yaml'
 params = read_yaml(params)
 
 n_epochs = int(params['n_epochs'])
 lr = float(params['lr'])
+lr_str = str(lr).replace('.', 'P')
 batch_size = int(params['batch_size'])
+window_size = int(params['window_size'])
+model_path = Path(__file__).parent.parent / 'model' / 'modelfile' / f'model_{n_epochs}_{lr_str}_{batch_size}_{window_size}.pt'
 
-X_seq, Y_seq = etl()
 
-def magnitude_aware_loss(prediction, target, max_magnitude=10.0):
-    """
-    Dynamic loss function that penalizes magnitude misclassifications exponentially
-    """
-    magnitude_diff = torch.abs(prediction - target)
-    
-    penalty = torch.exp(magnitude_diff) - 1
-    
-    magnitude_scaling = torch.abs(target) + 1
-    
-    total_loss = magnitude_diff * penalty * torch.log(magnitude_scaling)
-    
-    return torch.mean(total_loss)
-
-def train():
+def train(X_seq, Y_seq):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
     model = EarthquakeMagnitudeLSTM(X_seq.shape[2])
     model.to(device)
-    criterion = magnitude_aware_loss
+    criterion = nn.MSELoss()
+    # criterion = magnitude_aware_loss
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5)
@@ -83,7 +72,8 @@ def train():
         print(f"  Avg True Label: {avg_true_label:.4f}")
         print(f"  Current LR: {optimizer.param_groups[0]['lr']}")
 
-    return model
+        
+        torch.save(model.state_dict(), model_path)
 
 
 if __name__ == "__main__":

@@ -39,6 +39,7 @@ def etl():
     config = Path(__file__).parent.parent / 'config.yaml'
     params = Path(__file__).parent.parent / 'params.yaml'
     config = read_yaml(config)
+    params = read_yaml(params)
     data_root_path = Path(__file__).parent.parent / config['dataset_root']
     window_size = int(params['window_size'])
     if 'sequence_data.pt' in os.listdir(data_root_path):
