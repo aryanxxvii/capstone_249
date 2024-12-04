@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 class EarthquakeMagnitudeLSTM(nn.Module):
     def __init__(self, input_size, hidden_size=128):
@@ -64,3 +63,4 @@ class EarthquakeMagnitudeLSTM(nn.Module):
         magnitude = self.magnitude_predictor(pooled_features)
         
         return magnitude
+    

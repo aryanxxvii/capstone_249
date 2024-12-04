@@ -38,7 +38,7 @@ def train(X_seq, Y_seq):
     print("Data Statistics:")
     print(f"X_seq mean: {X_seq.mean()}, std: {X_seq.std()}")
     print(f"Y_seq mean: {Y_seq.mean()}, std: {Y_seq.std()}")
-
+    
     model.train()
     for epoch in range(n_epochs):
         total_loss = 0.0

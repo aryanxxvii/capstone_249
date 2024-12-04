@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earthquake Predictions</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-globe@0.0.6/dist/leaflet-globe.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f7f7f7;
+        }
+
+        .container {
+            display: flex;
+            margin: 20px auto;
+            max-width: 1400px;
+            height: 90vh;
+        }
+
+        .left-container {
+            width: 55%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            /* Makes sure map and chart are spaced properly */
+        }
+
+        .right-container {
+            width: 45%;
+            padding-left: 20px;
+            border-left: 1px solid #ccc;
+            height: 100%;
+            /* Full height */
+            overflow-y: auto;
+            /* Allows scrolling if content overflows */
+        }
+
+        .chart-container {
+            flex: 1;
+        }
+
+        .map-container {
+            flex: 1;
+            margin-top: 20px;
+            height: 300px;
+            /* Adjust map height as needed */
+        }
+
+        h1 {
+            color: #333;
+        }
+
+        canvas {
+            width: 100%;
+            height: 400px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        table th,
+        table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: center;
+        }
+
+        table th {
+            background-color: #f2f2f2;
+        }
+
+        #map {
+            height: 100%;
+            width: 100%;
+        }
+
+        .code-block {
+            margin-top: 40px;
+            padding: 20px;
+            background-color: #f5f5f5;
+            border: 1px solid #ccc;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 14px;
+            text-align: left;
+            max-width: 1200px;
+            margin-left: auto;
+            margin-right: auto;
+            box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+
+<body>
+    <div class="container">
+        <div class="left-container">
+            <!-- Chart Section -->
+            <div class="chart-container">
+                <h1>Earthquake Magnitude Predictions</h1>
+                <p><strong>Mean Absolute Error (MAE): </strong><span id="mae">0</span></p>
+                <canvas id="predictionChart"></canvas>
+            </div>
+            <!-- Map Section -->
+            <div class="map-container">
+                <div id="map"></div>
+            </div>
+        </div>
+
+        <!-- Table Section (Right Full Height) -->
+        <div class="right-container">
+            <h2>Predictions</h2>
+            <table id="predictionTable">
+                <thead>
+                    <tr>
+                        <th>Predicted</th>
+                        <th>Actual</th>
+                        <th>Latitude</th>
+                        <th>Longitude</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Data rows will be dynamically inserted here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+
+
+
+    <div class="code-block">
+        <h3>Model Architecture</h3>
+        <pre>
+import torch
+import torch.nn as nn
+
+class EarthquakeMagnitudeLSTM(nn.Module):
+    def __init__(self, input_size, hidden_size=128):
+        super(EarthquakeMagnitudeLSTM, self).__init__()
+        
+        self.first_lstm_layers = nn.ModuleList([ 
+            nn.LSTM(input_size if i == 0 else hidden_size * 2, hidden_size, batch_first=True, bidirectional=True) for i in range(3)
+        ])
+        
+        self.first_attention = nn.MultiheadAttention(embed_dim=hidden_size * 2, num_heads=4, dropout=0.2, batch_first=True)
+        
+        self.second_lstm_layers = nn.ModuleList([ 
+            nn.LSTM(hidden_size * 2, hidden_size, batch_first=True, bidirectional=True) for _ in range(3)
+        ])
+        
+        self.second_attention = nn.MultiheadAttention(embed_dim=hidden_size * 2, num_heads=4, dropout=0.2, batch_first=True)
+        
+        self.magnitude_predictor = nn.Sequential(
+            nn.Linear(hidden_size * 2, 256),
+            nn.ReLU(),
+            nn.Dropout(0.3),
+            nn.Linear(256, 64),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(64, 1)
+        )
+        
+    def forward(self, x):
+        for lstm_layer in self.first_lstm_layers:
+            x, _ = lstm_layer(x)
+        
+        x, _ = self.first_attention(x, x, x)
+        
+        for lstm_layer in self.second_lstm_layers:
+            x, _ = lstm_layer(x)
+        
+        x, _ = self.second_attention(x, x, x)
+        
+        pooled_features = torch.mean(x, dim=1)
+        
+        magnitude = self.magnitude_predictor(pooled_features)
+        
+        return magnitude
+        </pre>
+    </div>
+
+    <script>
+        let predictionData = [];
+        let actualData = [];
+        let labels = [];
+        let latitudes = [];
+        let longitudes = [];
+        let mae = 0;
+
+        const ctx = document.getElementById('predictionChart').getContext('2d');
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Predicted Magnitude',
+                    data: predictionData,
+                    borderColor: 'rgba(75, 192, 192, 1)',
+                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                    fill: false,
+                    borderWidth: 2,
+                },
+                {
+                    label: 'Actual Magnitude',
+                    data: actualData,
+                    borderColor: 'rgba(255, 99, 132, 1)',
+                    backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                    fill: false,
+                    borderWidth: 2,
+                }]
+            },
+            options: {
+                scales: {
+                    x: {
+                        type: 'linear',
+                        position: 'bottom',
+                    },
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function (tooltipItem) {
+                                return `Prediction: ${tooltipItem.raw}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // Function to fetch new prediction and update chart and table
+        async function fetchPrediction() {
+            const response = await fetch('/predict_data');
+            const data = await response.json();
+
+            // Update prediction and actual values
+            predictionData.push(data.prediction);
+            actualData.push(data.actual);
+            labels.push(labels.length + 1); // Simulate time steps
+
+            // Update latitude and longitude
+            latitudes.push(data.latitude);
+            longitudes.push(data.longitude);
+
+            // Keep only the latest 15 data points
+            // if (predictionData.length > 20) {
+            //     predictionData.shift();
+            //     actualData.shift();
+            //     labels.shift();
+            // }
+
+            // Update MAE
+            mae = data.mae;
+
+            // Update the chart
+            chart.update();
+
+            // Update the table with new prediction data
+            updateTable(data.predictions_data);
+
+            // Update the map with new latitude and longitude
+            updateMap(data.latitude, data.longitude);
+        }
+
+        // Function to update the table
+        function updateTable(predictionsData) {
+            const tableBody = document.getElementById('predictionTable').getElementsByTagName('tbody')[0];
+            tableBody.innerHTML = ""; // Clear the existing rows
+
+            predictionsData.forEach(row => {
+                const newRow = tableBody.insertRow();
+                newRow.innerHTML = `
+                    <td>${row.predicted.toFixed(3)}</td>
+                    <td>${row.actual.toFixed(2)}</td>
+                    <td>${row.latitude.toFixed(4)}</td>
+                    <td>${row.longitude.toFixed(4)}</td>
+                    <td>${row.absolute_error.toFixed(2)}</td>
+                `;
+            });
+
+            // Update MAE on the page
+            document.getElementById("mae").innerText = mae.toFixed(3);
+        }
+
+        // Function to initialize and update the map
+        const map = L.map('map').setView([30.3, 78.5], 9); // Default view focusing on a central location
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Function to update the globe with new coordinates
+        function updateMap(latitude, longitude) {
+            // Clear previous markers
+            if (window.marker) {
+                map.removeLayer(window.marker);
+            }
+
+            // Add new marker for the given latitude and longitude
+            window.marker = L.marker([latitude, longitude]).addTo(map);
+            map.setView([latitude, longitude], 9);
+        }
+
+        // Fetch initial prediction data when page loads
+        window.onload = function () {
+            fetchPrediction();
+            setInterval(fetchPrediction, 3000); // Fetch new prediction data every 5 seconds
+        };
+    </script>
+
+</body>
+
+</html>
